@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>🍱 ダッシュボード</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>🍱 ダッシュボード</h1>
+    <h2>ようこそ, <span data-user-name></span>!</h2>
+    
+    <div class="order-summary">
+      <h3>📅 Upcoming Orders</h3>
+      <div id="futureOrdersContainer">
+        <table id="futureOrdersTable">
+          <thead>
+            <tr>
+              <th>日にち</th>
+              <th>曜日</th>
+              <th>注文</th>
+            </tr>
+          </thead>
+          <tbody id="futureOrdersBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="order-summary">
+      <h3>📋 Recent Order History</h3>
+      <div id="pastOrdersContainer">
+        <table id="pastOrdersTable">
+          <thead>
+            <tr>
+              <th>日にち</th>
+              <th>曜日</th>
+              <th>注文</th>
+            </tr>
+          </thead>
+          <tbody id="pastOrdersBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="navigation">
+      <button onclick="window.location.href='order.html'">📝 注文シート</button>
+      <button onclick="window.location.href='edit.html'" class="secondary">✏️ 注文を変更シート</button>
+      <button onclick="logout()" class="secondary">🚪 ログアウト</button>
+    </div>
+  </div>
+
+  <script src="common.js"></script>
+  <script>
+    window.onload = function() {
+      if (!requireLogin()) return;
+      updateUserNames();
+      loadDashboard();
+    };
+
+    function loadDashboard() {
+      // Show loading state
+      const futureBody = document.getElementById('futureOrdersBody');
+      const pastBody = document.getElementById('pastOrdersBody');
+      
+      if (futureBody) {
+        futureBody.innerHTML = '<tr><td colspan="3">Loading future orders...</td></tr>';
+      }
+      if (pastBody) {
+        pastBody.innerHTML = '<tr><td colspan="3">Loading order history...</td></tr>';
+      }
+
+      console.log("Loading dashboard for user:", currentUser.id);
+
+      google.script.run
+        .withSuccessHandler(handleDashboardSuccess)
+        .withFailureHandler(handleDashboardError)
+        .getDashboardOrders(currentUser.id);
+    }
+
+    function handleDashboardSuccess(data) {
+      console.log("Dashboard data received:", data);
+      
+      if (!data) {
+        handleDashboardError("No data received");
+        return;
+      }
+
+      try {
+        renderDashboard(data);
+      } catch (error) {
+        console.error("Error rendering dashboard:", error);
+        handleDashboardError("Failed to render dashboard data");
+      }
+    }
+
+    function handleDashboardError(error) {
+      console.error("Dashboard load error:", error);
+      
+      const futureBody = document.getElementById('futureOrdersBody');
+      const pastBody = document.getElementById('pastOrdersBody');
+      
+      if (futureBody) {
+        futureBody.innerHTML = '<tr><td colspan="3">Failed to load future orders</td></tr>';
+      }
+      if (pastBody) {
+        pastBody.innerHTML = '<tr><td colspan="3">Failed to load order history</td></tr>';
+      }
+    }
+
+    function renderDashboard(data) {
+      console.log("Rendering dashboard with data:", data);
+
+      // Render future orders
+      const futureBody = document.getElementById('futureOrdersBody');
+      if (futureBody) {
+        futureBody.innerHTML = "";
+        
+        if (data.futureDates && data.futureDates.length > 0) {
+          data.futureDates.forEach(row => {
+            if (Array.isArray(row) && row.length >= 3) {
+              const tr = document.createElement('tr');
+              row.forEach(cell => {
+                const td = document.createElement('td');
+                td.textContent = cell || '';
+                tr.appendChild(td);
+              });
+              futureBody.appendChild(tr);
+            }
+          });
+        } else {
+          futureBody.innerHTML = '<tr><td colspan="3">No upcoming orders</td></tr>';
+        }
+      }
+
+      // Render past orders
+      const pastBody = document.getElementById('pastOrdersBody');
+      if (pastBody) {
+        pastBody.innerHTML = "";
+        
+        if (data.pastDates && data.pastDates.length > 0) {
+          data.pastDates.forEach(row => {
+            if (Array.isArray(row) && row.length >= 3) {
+              const tr = document.createElement('tr');
+              row.forEach(cell => {
+                const td = document.createElement('td');
+                td.textContent = cell || '';
+                tr.appendChild(td);
+              });
+              pastBody.appendChild(tr);
+            }
+          });
+        } else {
+          pastBody.innerHTML = '<tr><td colspan="3">No order history</td></tr>';
+        }
+      }
+    }
+  </script>
+</body>
+</html>

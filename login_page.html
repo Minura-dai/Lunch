@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>🍱 昼食注文システム - ログイン</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h2>🍱 昼食注文システム</h2>
+    <h3>ログイン</h3>
+    <form id="loginForm">
+      <input type="text" id="employeeId" placeholder="会社員番号" required />
+      <input type="password" id="password" placeholder="パスワード" required />
+      <button type="submit">ログイン</button>
+      <span class="link" onclick="window.location.href='reset-request.html'">パスワードを忘れた場合</span>
+    </form>
+  </div>
+
+  <script src="common.js"></script>
+  <script>
+    document.getElementById("loginForm").addEventListener("submit", handleLogin);
+
+    function handleLogin(e) {
+      e.preventDefault();
+      
+      const employeeId = document.getElementById("employeeId").value.trim();
+      const password = document.getElementById("password").value;
+
+      if (!employeeId || !password) {
+        alert("Please enter both Employee ID and Password.");
+        return;
+      }
+
+      google.script.run
+        .withSuccessHandler(handleLoginSuccess)
+        .withFailureHandler(handleLoginFailure)
+        .checkLogin(employeeId, password);
+    }
+
+    function handleLoginSuccess(result) {
+      if (result.success) {
+        sessionStorage.setItem("employeeId", result.employeeId);
+        sessionStorage.setItem("employeeName", result.name);
+        window.location.href = "dashboard.html";
+      } else {
+        alert("❌ " + result.message);
+      }
+    }
+
+    function handleLoginFailure(error) {
+      console.error("Login error:", error);
+      alert("❌ Login failed. Please try again.");
+    }
+
+    // Check if user is already logged in
+    window.onload = function() {
+      const storedId = sessionStorage.getItem("employeeId");
+      const storedName = sessionStorage.getItem("employeeName");
+      
+      if (storedId && storedName) {
+        window.location.href = "dashboard.html";
+      }
+
+      // Handle password reset token if present in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const resetToken = urlParams.get('token');
+      if (resetToken) {
+        sessionStorage.setItem("resetToken", resetToken);
+        window.location.href = "reset-password.html";
+      }
+    };
+  </script>
+</body>
+</html>

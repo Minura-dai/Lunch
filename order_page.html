@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>📝 注文シート</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h3>📝 注文シート</h3>
+    <p>ようこそ, <span data-user-name></span>!</p>
+    
+    <table id="orderTable">
+      <thead>
+        <tr>
+          <th>日にち (Date)</th>
+          <th>曜日 (Day)</th>
+          <th>セット (Set)</th>
+          <th>単品 (Regular)</th>
+          <th>いらない (Not Needed)</th>
+        </tr>
+      </thead>
+      <tbody id="orderTableBody"></tbody>
+    </table>
+    
+    <div class="navigation">
+      <button onclick="saveOrders()">💾 保存する</button>
+      <div id="saveStatus"></div>
+      <button onclick="window.location.href='dashboard.html'" class="secondary">📊 ダッシュボードへ</button>
+      <button onclick="logout()" class="secondary">🚪 ログアウト</button>
+    </div>
+  </div>
+
+  <script src="common.js"></script>
+  <script>
+    window.onload = function() {
+      if (!requireLogin()) return;
+      updateUserNames();
+      loadOrderForm();
+    };
+
+    function loadOrderForm() {
+      console.log("Loading order form");
+      
+      // Show loading state
+      const tbody = document.getElementById("orderTableBody");
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="5">Loading order data...</td></tr>';
+      }
+
+      // First get valid order dates from Excel/Google Sheets
+      google.script.run
+        .withSuccessHandler(dates => {
+          console.log("Received dates:", dates);
+          if (!dates || dates.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5">No order dates available</td></tr>';
+            return;
+          }
+          loadOrderFormWithDates(dates);
+        })
+        .withFailureHandler(error => {
+          console.error("Error loading dates:", error);
+          if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="5">Failed to load order dates</td></tr>';
+          }
+        })
+        .getOrderDates();
+    }
+
+    function loadOrderFormWithDates(dates) {
+      console.log(`Loading existing orders for user: ${currentUser.id}`);
+      
+      // Then get existing orders from Excel/Google Sheets
+      google.script.run
+        .withSuccessHandler(existingOrders => {
+          console.log("Received existing orders:", existingOrders);
+          try {
+            populateOrderTable(dates, existingOrders || []);
+          } catch (error) {
+            console.error("Error populating table:", error);
+            const tbody = document.getElementById("orderTableBody");
+            if (tbody) {
+              tbody.innerHTML = '<tr><td colspan="5">Error loading order form</td></tr>';
+            }
+          }
+        })
+        .withFailureHandler(error => {
+          console.error("Error loading existing orders:", error);
+          // Still populate table with dates, just no existing selections
+          try {
+            populateOrderTable(dates, []);
+          } catch (popError) {
+            console.error("Error populating table even without existing orders:", popError);
+            const tbody = document.getElementById("orderTableBody");
+            if (tbody) {
+              tbody.innerHTML = '<tr><td colspan="5">Error loading order form</td></tr>';
+            }
+          }
+        })
+        .checkExistingOrders(currentUser.id);
+    }
+
+    function populateOrderTable(dates, existingOrders) {
+      console.log(`Populating table with ${dates.length} dates and ${existingOrders.length} existing orders`);
+      
+      const tbody = document.getElementById("orderTableBody");
+      if (!tbody) {
+        console.error("Table body not found");
+        return;
+      }
+      
+      tbody.innerHTML = "";
+
+      // Create lookup for existing orders
+      const existingOrdersMap = {};
+      if (Array.isArray(existingOrders)) {
+        existingOrders.forEach(order => {
+          if (order && order.date) {
+            existingOrdersMap[order.date] = order.order;
+          }
+        });
+      }
+
+      const now = new Date();
+      const todayStr = formatDateJapanese(now);
+
+      if (!Array.isArray(dates) || dates.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5">No dates available</td></tr>';
+        return;
+      }
+
+      dates.forEach((dateInfo, index) => {
+        try {
+          // Handle different date formats from Excel
+          let date, weekday;
+          
+          if (typeof dateInfo === 'object' && dateInfo !== null) {
+            date = dateInfo.date || dateInfo.Date || '';
+            weekday = dateInfo.weekday || dateInfo.Weekday || dateInfo.day || '';
+          } else if (typeof dateInfo === 'string') {
+            date = dateInfo;
+            weekday = ''; // Will be calculated if needed
+          } else {
+            console.warn(`Invalid date format at index ${index}:`, dateInfo);
+            return;
+          }
+
+          if (!date) {
+            console.warn(`No date found at index ${index}:`, dateInfo);
+            return;
+          }
+
+          // Calculate weekday if not provided
+          if (!weekday && date) {
+            try {
+              const dateObj = parseDateJapanese(date);
+              const days = ['日', '月', '火', '水', '木', '金', '土'];
+              weekday = days[dateObj.getDay()];
+            } catch (e) {
+              console.warn(`Could not parse date for weekday: ${date}`);
+              weekday = '';
+            }
+          }
+
+          const orderDateObj = parseDateJapanese(date);
+          const savedOrder = existingOrdersMap[date] || "Set";
+
+          const isToday = date === todayStr;
+          const isPast = orderDateObj < new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const isPast8amToday = isToday && now.getHours() >= 8;
+          const shouldDisable = isPast || isPast8amToday;
+
+          const row = document.createElement("tr");
+          if (shouldDisable) {
+            row.classList.add("disabled");
+          }
+
+          row.innerHTML = `
+            <td>${date}</td>
+            <td>${weekday}</td>
+            <td><input type="radio" name="order-${date}" value="Set" ${savedOrder === "Set" ? "checked" : ""} ${shouldDisable ? "disabled" : ""}></td>
+            <td><input type="radio" name="order-${date}" value="Regular" ${savedOrder === "Regular" ? "checked" : ""} ${shouldDisable ? "disabled" : ""}></td>
+            <td><input type="radio" name="order-${date}" value="Not Needed" ${savedOrder === "Not Needed" ? "checked" : ""} ${shouldDisable ? "disabled" : ""}></td>
+          `;
+          
+          tbody.appendChild(row);
+        } catch (error) {
+          console.error(`Error processing date at index ${index}:`, error, dateInfo);
+        }
+      });
+
+      console.log(`Successfully populated ${tbody.children.length} rows`);
+    }
+
+    // Save orders function with duplicate prevention
+    const debouncedSaveOrders = debounce(function() {
+      if (!canExecuteAction()) {
+        console.log("Save orders blocked - duplicate action prevented");
+        return;
+      }
+
+      console.log("Saving orders for user:", currentUser.id);
+      
+      // Disable save button during processing
+      const saveButton = document.querySelector('button[onclick="saveOrders()"]');
+      if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.textContent = "Saving...";
+      }
+
+      const orders = collectOrdersFromTable("orderTableBody");
+      
+      if (orders.length === 0) {
+        showStatusMessage("saveStatus", "No orders to save.", "error");
+        resetProcessingState();
+        if (saveButton) {
+          saveButton.disabled = false;
+          saveButton.textContent = "💾 保存する";
+        }
+        return;
+      }
+
+      console.log("Collected orders:", orders);
+      
+      google.script.run
+        .withSuccessHandler(result => {
+          console.log("Save result:", result);
+          showStatusMessage("saveStatus", result.message, result.success ? "success" : "error");
+          resetProcessingState();
+          if (saveButton) {
+            saveButton.disabled = false;
+            saveButton.textContent = "💾 保存する";
+          }
+        })
+        .withFailureHandler(error => {
+          console.error("Save error:", error);
+          showStatusMessage("saveStatus", "❌ Failed to save orders.", "error");
+          resetProcessingState();
+          if (saveButton) {
+            saveButton.disabled = false;
+            saveButton.textContent = "💾 保存する";
+          }
+        })
+        .saveOrders(currentUser.id, currentUser.name, orders);
+    }, 500);
+
+    function saveOrders() {
+      debouncedSaveOrders();
+    }
+  </script>
+</body>
+</html>
